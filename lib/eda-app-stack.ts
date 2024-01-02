@@ -11,11 +11,14 @@ import * as iam from 'aws-cdk-lib/aws-iam';
 
 import { Construct } from 'constructs';
 
+
 export class EDAAppStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
     const imagesBucket = new s3.Bucket(this, 'images', {
+
+
       removalPolicy: cdk.RemovalPolicy.DESTROY,
       autoDeleteObjects: true,
       publicReadAccess: false,
@@ -41,13 +44,19 @@ export class EDAAppStack extends cdk.Stack {
       entry: `${__dirname}/../lambdas/mailer.ts`,
     });
 
+
+
     // Lambda functions
     const processImageFn = new lambdanode.NodejsFunction(this, 'ProcessImageFn', {
+
+
+
       runtime: lambda.Runtime.NODEJS_18_X,
       entry: `${__dirname}/../lambdas/processImage.ts`,
       timeout: cdk.Duration.seconds(15),
       memorySize: 128,
     });
+
 
     // Event triggers
     imagesBucket.addEventNotification(
@@ -62,6 +71,9 @@ export class EDAAppStack extends cdk.Stack {
 
     processImageFn.addEventSource(newImageEventSource);
 
+
+
+
     // Permissions
     imagesBucket.grantRead(processImageFn);
 
@@ -69,13 +81,13 @@ export class EDAAppStack extends cdk.Stack {
     newImageTopic.addSubscription(new subs.SqsSubscription(mailerQ));
 
     // Create a new event source from the mailerQ
-    const mailerEventSource = new events.SqsEventSource(mailerQ, {
+    const newImageMailEventSource = new events.SqsEventSource(mailerQ, {
       batchSize: 5,
       maxBatchingWindow: cdk.Duration.seconds(10),
-    });
+    }); 
 
     // Make the mailerFn trigger on messages from mailerQ
-    mailerFn.addEventSource(mailerEventSource);
+    mailerFn.addEventSource(newImageMailEventSource);
 
     // Give mailerFn permissions to send emails using SES
     mailerFn.addToRolePolicy(
@@ -92,6 +104,7 @@ export class EDAAppStack extends cdk.Stack {
 
     // Output
     new cdk.CfnOutput(this, 'bucketName', {
+
       value: imagesBucket.bucketName,
     });
   }

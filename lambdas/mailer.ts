@@ -1,6 +1,8 @@
 import { SQSHandler } from "aws-lambda";
 // import AWS from 'aws-sdk';
-import { SES_EMAIL_FROM, SES_EMAIL_TO, SES_REGION } from "../env";
+const SES_REGION = 'eu-west-1';
+const SES_EMAIL_FROM = 'cormackfarrell@gmail.com' ;
+const SES_EMAIL_TO =  'cormackfarrell@gmail.com';
 import {
   SESClient,
   SendEmailCommand,
@@ -12,6 +14,7 @@ if (!SES_EMAIL_TO || !SES_EMAIL_FROM || !SES_REGION) {
     "Please add the SES_EMAIL_TO, SES_EMAIL_FROM and SES_REGION environment variables in an env.js file located in the root directory"
   );
 }
+
 
 type ContactDetails = {
   name: string;
@@ -62,10 +65,10 @@ function sendEmailParams({ name, email, message }: ContactDetails) {
           Charset: "UTF-8",
           Data: getHtmlContent({ name, email, message }),
         },
-        // Text: {
-        //   Charset: "UTF-8",
-        //   Data: getTextContent({ name, email, message }),
-        // },
+        Text: {
+          Charset: "UTF-8",
+           Data: getTextContent({ name, email, message }),
+         },
       },
       Subject: {
         Charset: "UTF-8",
