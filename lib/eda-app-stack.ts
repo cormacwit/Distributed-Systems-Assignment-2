@@ -8,8 +8,11 @@ import * as sqs from 'aws-cdk-lib/aws-sqs';
 import * as sns from 'aws-cdk-lib/aws-sns';
 import * as subs from 'aws-cdk-lib/aws-sns-subscriptions';
 import * as iam from 'aws-cdk-lib/aws-iam';
-
 import { Construct } from 'constructs';
+import { Duration, RemovalPolicy } from "aws-cdk-lib";
+import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
+import { CfnOutput, Stack, StackProps } from "aws-cdk-lib";
+import { SqsEventSource } from "aws-cdk-lib/aws-lambda-event-sources";
 
 
 export class EDAAppStack extends cdk.Stack {
@@ -44,16 +47,53 @@ export class EDAAppStack extends cdk.Stack {
       entry: `${__dirname}/../lambdas/mailer.ts`,
     });
 
+    ////sqs dead letter queue
+    const badOrdersQueue = new sqs.Queue(this, "bad-orders-q", {
+      retentionPeriod: Duration.minutes(30),
+    });
 
+    const ordersQueue = new sqs.Queue(this, "orders-queue", {
+      deadLetterQueue: {
+        queue: badOrdersQueue,
+        // # of rejections by consumer (lambda function)
+        maxReceiveCount: 2,
+      },
+    });
 
-    // Lambda functions
+////SQS event source
     const processImageFn = new lambdanode.NodejsFunction(this, 'ProcessImageFn', {
-
-
-
       runtime: lambda.Runtime.NODEJS_18_X,
       entry: `${__dirname}/../lambdas/processImage.ts`,
       timeout: cdk.Duration.seconds(15),
+      memorySize: 128,
+    });
+
+    //
+    const processOrdersFn = new NodejsFunction(this, "ProcessOrdersFn", {
+      architecture: lambda.Architecture.ARM_64,
+      runtime: lambda.Runtime.NODEJS_16_X,
+      entry: `${__dirname}/../lambdas/processOrders.ts`,
+      timeout: Duration.seconds(10),
+      memorySize: 128,
+    });
+
+    // VVV For testing
+    const generateOrdersFn = new NodejsFunction(this, "GenerateOrdersFn", {
+      architecture: lambda.Architecture.ARM_64,
+      runtime: lambda.Runtime.NODEJS_16_X,
+      entry: `${__dirname}/../lambdas/generateOrders.ts`,
+      timeout: Duration.seconds(10),
+      memorySize: 128,
+      environment: {
+        QUEUE_URL: ordersQueue.queueUrl,
+      },
+    });
+
+    const failedOrdersFn = new NodejsFunction(this, "FailedOrdersFn", {
+      architecture: lambda.Architecture.ARM_64,
+      runtime: lambda.Runtime.NODEJS_16_X,
+      entry: `${__dirname}/../lambdas/handleBadOrder.ts`,
+      timeout: Duration.seconds(10),
       memorySize: 128,
     });
 
@@ -70,6 +110,21 @@ export class EDAAppStack extends cdk.Stack {
     });
 
     processImageFn.addEventSource(newImageEventSource);
+
+    processOrdersFn.addEventSource(
+      new SqsEventSource(ordersQueue, {
+        maxBatchingWindow: Duration.seconds(5),
+        maxConcurrency: 2,
+      })
+    );
+
+    failedOrdersFn.addEventSource(
+      new SqsEventSource(badOrdersQueue, {
+        maxBatchingWindow: Duration.seconds(5),
+        maxConcurrency: 2,
+      })
+    );
+
 
 
 
@@ -90,17 +145,9 @@ export class EDAAppStack extends cdk.Stack {
     mailerFn.addEventSource(newImageMailEventSource);
 
     // Give mailerFn permissions to send emails using SES
-    mailerFn.addToRolePolicy(
-      new iam.PolicyStatement({
-        effect: iam.Effect.ALLOW,
-        actions: [
-          'ses:SendEmail',
-          'ses:SendRawEmail',
-          'ses:SendTemplatedEmail',
-        ],
-        resources: ['*'],
-      })
-    );
+    new CfnOutput(this, "Generator Lambda name", {
+      value: generateOrdersFn.functionName,
+    });
 
     // Output
     new cdk.CfnOutput(this, 'bucketName', {

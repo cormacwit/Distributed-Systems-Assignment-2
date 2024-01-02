@@ -1,0 +1,10 @@
+{
+    "user_type": {
+        "DataType": "String",
+        "StringValue": "Student"
+    },
+    "source": {
+        "DataType": "String",
+        "StringValue": "Moodle2023"
+    }
+}
