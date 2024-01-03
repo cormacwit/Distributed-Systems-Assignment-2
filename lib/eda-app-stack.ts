@@ -13,6 +13,7 @@ import { Duration, RemovalPolicy } from "aws-cdk-lib";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import { CfnOutput, Stack, StackProps } from "aws-cdk-lib";
 import { SqsEventSource } from "aws-cdk-lib/aws-lambda-event-sources";
+import { SqsDestination } from "aws-cdk-lib/aws-lambda-destinations";
 
 
 export class EDAAppStack extends cdk.Stack {
@@ -77,7 +78,53 @@ export class EDAAppStack extends cdk.Stack {
       memorySize: 128,
     });
 
-    // VVV For testing
+    /////SNS labs
+    const edaTopic = new sns.Topic(this, "EDATopic", {
+      displayName: "EDA topic",
+    });
+
+    const queue = new sqs.Queue(this, "all-msg-queue", {
+      receiveMessageWaitTime: cdk.Duration.seconds(5),
+    });
+
+    const failuresQueue = new sqs.Queue(this, "img-failure-queue", {
+      receiveMessageWaitTime: cdk.Duration.seconds(5),
+    });
+
+    const processSNSMessageFn = new lambdanode.NodejsFunction(
+      this,
+      "processSNSMsgFn",
+      {
+        runtime: lambda.Runtime.NODEJS_16_X,
+        memorySize: 128,
+        timeout: cdk.Duration.seconds(3),
+        entry: `${__dirname}/../lambdas/processSNSMsg.ts`,
+      }
+    );
+
+    const processSQSMessageFn = new lambdanode.NodejsFunction(
+      this,
+      "processSQSMsgFn",
+      {
+        runtime: lambda.Runtime.NODEJS_16_X,
+        memorySize: 128,
+        timeout: cdk.Duration.seconds(3),
+        entry: `${__dirname}/../lambdas/processSQSMsg.ts`,
+      }
+    );
+
+    const processFailuresFn = new lambdanode.NodejsFunction(
+      this,
+      "processFailedMsgFn",
+      {
+        runtime: lambda.Runtime.NODEJS_16_X,
+        memorySize: 128,
+        timeout: cdk.Duration.seconds(3),
+        entry: `${__dirname}/../lambdas/processFailures.ts`,
+      }
+    );
+
+    
     const generateOrdersFn = new NodejsFunction(this, "GenerateOrdersFn", {
       architecture: lambda.Architecture.ARM_64,
       runtime: lambda.Runtime.NODEJS_16_X,
@@ -125,15 +172,12 @@ export class EDAAppStack extends cdk.Stack {
       })
     );
 
-
-
-
-
     // Permissions
     imagesBucket.grantRead(processImageFn);
 
     // Connect mailerQ as a subscriber to newImageTopic
     newImageTopic.addSubscription(new subs.SqsSubscription(mailerQ));
+    newImageTopic.addSubscription(new subs.SqsSubscription(imageProcessQueue));
 
     // Create a new event source from the mailerQ
     const newImageMailEventSource = new events.SqsEventSource(mailerQ, {
@@ -154,5 +198,33 @@ export class EDAAppStack extends cdk.Stack {
 
       value: imagesBucket.bucketName,
     });
+
+    edaTopic.addSubscription(
+      new subs.LambdaSubscription(processSNSMessageFn, {
+          filterPolicy: {
+            user_type: sns.SubscriptionFilter.stringFilter({
+                allowlist: ['Student','Lecturer']
+            }),
+          },
+      })
+    );
+
+    edaTopic.addSubscription(
+      new subs.SqsSubscription(queue, {
+        rawMessageDelivery: true,
+        filterPolicy: {
+          user_type: sns.SubscriptionFilter.stringFilter({
+              denylist: ['Lecturer']  
+          }),
+          source: sns.SubscriptionFilter.stringFilter({
+            matchPrefixes: ['Moodle','Slack']  
+        }),
+        },
+      })
+    );
+
+    new cdk.CfnOutput(this, "topicARN", {
+      value: edaTopic.topicArn,
+    });  
   }
 }
