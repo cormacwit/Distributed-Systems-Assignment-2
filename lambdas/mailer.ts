@@ -1,8 +1,8 @@
 import { SQSHandler } from "aws-lambda";
 // import AWS from 'aws-sdk';
 const SES_REGION = 'eu-west-1';
-const SES_EMAIL_FROM = '20093840@mail.wit.ie' ;
-const SES_EMAIL_TO =  '20093840@mail.wit.ie';
+const SES_EMAIL_FROM = 'cormackfarrell@gmail.com' ;
+const SES_EMAIL_TO =  'cormackfarrell@gmail.com';
 import {
   SESClient,
   SendEmailCommand,
